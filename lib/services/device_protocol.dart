@@ -213,6 +213,10 @@ abstract class DeviceTransport {
   Future<void> disconnect();
 }
 
+/// Typed command facade for the BLE JSON protocol.
+///
+/// UI code calls these methods instead of hand-building wire payloads, which
+/// keeps message ids, command names, and protocol versioning in one place.
 class DeviceProtocol {
   DeviceProtocol(this.transport);
 

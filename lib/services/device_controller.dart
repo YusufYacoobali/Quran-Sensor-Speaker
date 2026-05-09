@@ -4,143 +4,53 @@ import 'package:flutter/material.dart';
 
 import '../models/device_models.dart';
 import '../theme/app_theme.dart';
+import 'device_seed_data.dart';
 import 'device_protocol.dart';
+import 'device_status_payload_mapper.dart';
+import 'motion_rule_payload_mapper.dart';
 import 'quran_ble_connection.dart';
+import 'upload_file_picker.dart';
+import 'wifi_upload_client.dart';
 
-class MockDeviceController extends ChangeNotifier {
+/// App state coordinator for the prototype.
+///
+/// It owns the visible state and delegates edge concerns such as BLE transport,
+/// file picking, upload IO, and firmware payload mapping to smaller services.
+class DeviceController extends ChangeNotifier {
+  DeviceController({
+    UploadFilePicker uploadFilePicker = const UploadFilePicker(),
+    MotionRulePayloadMapper rulePayloadMapper = const MotionRulePayloadMapper(),
+    DeviceStatusPayloadMapper statusPayloadMapper =
+        const DeviceStatusPayloadMapper(),
+  }) : _uploadFilePicker = uploadFilePicker,
+       _rulePayloadMapper = rulePayloadMapper,
+       _statusPayloadMapper = statusPayloadMapper;
+
   QuranBleConnection? _bleConnection;
   DeviceProtocol? _protocol;
   StreamSubscription<DeviceEvent>? _eventSub;
+  final UploadFilePicker _uploadFilePicker;
+  final MotionRulePayloadMapper _rulePayloadMapper;
+  final DeviceStatusPayloadMapper _statusPayloadMapper;
+  final WifiUploadClient _wifiUploadClient = const WifiUploadClient();
+  List<int>? _selectedUploadBytes;
   String? lastProtocolMessage;
 
   bool get hasLiveBleConnection => _protocol != null;
 
-  DeviceSnapshot device = const DeviceSnapshot(
-    name: 'Qari Speaker 01',
-    status: DeviceLinkStatus.connected,
-    batteryPercent: 84,
-    storageUsedPercent: 62,
-    wifiName: 'Home Wi-Fi',
-    signalStrength: -48,
-    firmwareVersion: '0.2.0-dev',
-  );
+  DeviceSnapshot device = DeviceSeedData.currentDevice;
 
   List<DeviceSnapshot> get knownDevices => <DeviceSnapshot>[
     device,
-    ..._savedDevices.where((savedDevice) => savedDevice.name != device.name),
-  ];
-
-  static const List<DeviceSnapshot> _savedDevices = <DeviceSnapshot>[
-    DeviceSnapshot(
-      name: 'Bedroom Speaker',
-      status: DeviceLinkStatus.disconnected,
-      batteryPercent: 61,
-      storageUsedPercent: 48,
-      wifiName: 'Home Wi-Fi',
-      signalStrength: -72,
-      firmwareVersion: '0.1.8',
-    ),
-    DeviceSnapshot(
-      name: 'Workshop Prototype',
-      status: DeviceLinkStatus.disconnected,
-      batteryPercent: 24,
-      storageUsedPercent: 71,
-      wifiName: 'Not configured',
-      signalStrength: -89,
-      firmwareVersion: '0.2.0-dev',
+    ...DeviceSeedData.savedDevices.where(
+      (savedDevice) => savedDevice.name != device.name,
     ),
   ];
 
-  PlaybackState playback = const PlaybackState(
-    title: 'Surah Al-Mulk',
-    subtitle: 'Ayah 1-10 - Repeat 3x',
-    reciter: 'Mishary Rashid Alafasy',
-    mode: PlaybackMode.quranRange,
-    isPlaying: true,
-    volume: 0.72,
-    progress: 0.38,
-    repeatCount: 3,
-  );
-
-  UploadJob upload = const UploadJob(
-    fileName: 'test_recitation.mp3',
-    progress: 0,
-    isUploading: false,
-    transferNote: 'Ready to send over Wi-Fi',
-  );
-
-  final List<QuranSelection> quranSelections = const <QuranSelection>[
-    QuranSelection(
-      surahNumber: 1,
-      surahName: 'Al-Fatihah',
-      translation: 'The Opening',
-      fromAyah: 1,
-      toAyah: 7,
-      repeatCount: 5,
-    ),
-    QuranSelection(
-      surahNumber: 18,
-      surahName: 'Al-Kahf',
-      translation: 'The Cave',
-      fromAyah: 1,
-      toAyah: 10,
-      repeatCount: 1,
-    ),
-    QuranSelection(
-      surahNumber: 36,
-      surahName: 'Ya-Sin',
-      translation: 'Ya-Sin',
-      fromAyah: 1,
-      toAyah: 12,
-      repeatCount: 2,
-    ),
-    QuranSelection(
-      surahNumber: 67,
-      surahName: 'Al-Mulk',
-      translation: 'The Sovereignty',
-      fromAyah: 1,
-      toAyah: 10,
-      repeatCount: 3,
-    ),
-    QuranSelection(
-      surahNumber: 112,
-      surahName: 'Al-Ikhlas',
-      translation: 'Sincerity',
-      fromAyah: 1,
-      toAyah: 4,
-      repeatCount: 10,
-    ),
-  ];
-
-  List<MotionRule> rules = <MotionRule>[
-    const MotionRule(
-      id: 'entry',
-      name: 'Entry remembrance',
-      triggerLabel: 'Motion near hallway',
-      actionLabel: 'Play Al-Fatihah 1-7, repeat 3x',
-      enabled: true,
-      icon: Icons.door_front_door_outlined,
-      accent: AppTheme.emerald,
-    ),
-    const MotionRule(
-      id: 'morning',
-      name: 'Morning kitchen',
-      triggerLabel: 'First motion after 6:00 AM',
-      actionLabel: 'Play Al-Mulk 1-10',
-      enabled: true,
-      icon: Icons.wb_sunny_outlined,
-      accent: AppTheme.gold,
-    ),
-    const MotionRule(
-      id: 'night',
-      name: 'Quiet night mode',
-      triggerLabel: 'Motion after 10:30 PM',
-      actionLabel: 'Play Al-Ikhlas at 35% volume',
-      enabled: false,
-      icon: Icons.nightlight_outlined,
-      accent: AppTheme.teal,
-    ),
-  ];
+  PlaybackState playback = DeviceSeedData.playback;
+  UploadJob upload = DeviceSeedData.upload;
+  final List<QuranSelection> quranSelections = DeviceSeedData.quranSelections;
+  List<MotionRule> rules = <MotionRule>[...DeviceSeedData.motionRules];
 
   Timer? _uploadTimer;
 
@@ -344,20 +254,37 @@ class MockDeviceController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleRule(String id) {
-    rules = rules
-        .map(
-          (rule) =>
-              rule.id == id ? rule.copyWith(enabled: !rule.enabled) : rule,
-        )
-        .toList();
+  Future<void> setRuleEnabled(String id, bool enabled) async {
+    final previousRules = rules;
+    final rule = rules.firstWhere((rule) => rule.id == id);
+    final updatedRule = rule.copyWith(enabled: enabled);
+    rules = rules.map((rule) => rule.id == id ? updatedRule : rule).toList();
     notifyListeners();
-  }
 
-  void setRuleEnabled(String id, bool enabled) {
-    rules = rules
-        .map((rule) => rule.id == id ? rule.copyWith(enabled: enabled) : rule)
-        .toList();
+    final protocol = _protocol;
+    if (protocol == null) {
+      return;
+    }
+
+    try {
+      final payload = _rulePayloadMapper.toPayload(updatedRule);
+      final response = await protocol.upsertMotionRule(
+        id: updatedRule.id,
+        enabled: updatedRule.enabled,
+        trigger: payload.trigger,
+        action: payload.action,
+      );
+      if (response.ok) {
+        lastProtocolMessage = 'Motion rule saved';
+      } else {
+        rules = previousRules;
+        lastProtocolMessage =
+            response.error?.message ?? 'Motion rule save failed';
+      }
+    } catch (error) {
+      rules = previousRules;
+      lastProtocolMessage = 'Motion rule save failed: $error';
+    }
     notifyListeners();
   }
 
@@ -370,7 +297,7 @@ class MockDeviceController extends ChangeNotifier {
     });
   }
 
-  void addSuggestedRule() {
+  Future<void> addSuggestedRule() async {
     final newRule = MotionRule(
       id: 'rule-${DateTime.now().millisecondsSinceEpoch}',
       name: 'Focused study',
@@ -380,19 +307,211 @@ class MockDeviceController extends ChangeNotifier {
       icon: Icons.auto_stories_outlined,
       accent: AppTheme.coral,
     );
+    final previousRules = rules;
     rules = <MotionRule>[newRule, ...rules];
+    notifyListeners();
+
+    final protocol = _protocol;
+    if (protocol == null) {
+      return;
+    }
+
+    try {
+      final payload = _rulePayloadMapper.toPayload(newRule);
+      final response = await protocol.upsertMotionRule(
+        id: newRule.id,
+        enabled: newRule.enabled,
+        trigger: payload.trigger,
+        action: payload.action,
+      );
+      if (response.ok) {
+        lastProtocolMessage = 'Motion rule created';
+      } else {
+        rules = previousRules;
+        lastProtocolMessage =
+            response.error?.message ?? 'Motion rule create failed';
+      }
+    } catch (error) {
+      rules = previousRules;
+      lastProtocolMessage = 'Motion rule create failed: $error';
+    }
     notifyListeners();
   }
 
-  void startUpload() {
+  Future<bool> provisionWifi({
+    required String ssid,
+    required String password,
+  }) async {
+    final protocol = _protocol;
+    if (ssid.trim().isEmpty) {
+      lastProtocolMessage = 'Wi-Fi SSID is required';
+      notifyListeners();
+      return false;
+    }
+
+    if (protocol == null) {
+      device = device.copyWith(wifiName: ssid.trim());
+      lastProtocolMessage = 'Wi-Fi saved in mock mode';
+      notifyListeners();
+      return true;
+    }
+
+    try {
+      final response = await protocol.provisionWifi(
+        ssid: ssid.trim(),
+        password: password,
+      );
+      if (response.ok) {
+        final connected = _readBool(response.payload, 'connected', false);
+        device = device.copyWith(
+          wifiName: _readString(response.payload, 'ssid', ssid.trim()),
+        );
+        lastProtocolMessage = connected
+            ? 'Wi-Fi provisioned successfully'
+            : 'Wi-Fi credentials sent';
+        notifyListeners();
+        await refreshStatus();
+        return true;
+      }
+
+      lastProtocolMessage =
+          response.error?.message ?? 'Wi-Fi provisioning failed';
+    } catch (error) {
+      lastProtocolMessage = 'Wi-Fi provisioning failed: $error';
+    }
+    notifyListeners();
+    return false;
+  }
+
+  Future<void> startUpload() async {
     if (upload.isUploading) {
+      return;
+    }
+
+    final protocol = _protocol;
+    if (protocol == null) {
+      _startMockUpload();
+      return;
+    }
+
+    final uploadBytes = _selectedUploadBytes;
+    if (uploadBytes == null || uploadBytes.isEmpty) {
+      upload = upload.copyWith(transferNote: 'Choose an MP3 first');
+      lastProtocolMessage = upload.transferNote;
+      notifyListeners();
       return;
     }
 
     upload = upload.copyWith(
       progress: 0.02,
       isUploading: true,
-      transferNote: 'Preparing device upload session',
+      transferNote: 'Requesting upload session over BLE',
+    );
+    notifyListeners();
+
+    try {
+      final prepare = await protocol.prepareUpload(
+        fileName: upload.fileName,
+        sizeBytes: uploadBytes.length,
+        mimeType: 'audio/mpeg',
+      );
+
+      if (!prepare.ok) {
+        upload = upload.copyWith(
+          isUploading: false,
+          transferNote: prepare.error?.message ?? 'Upload prepare failed',
+        );
+        lastProtocolMessage = upload.transferNote;
+        notifyListeners();
+        return;
+      }
+
+      final url = _readString(prepare.payload, 'url', null);
+      final method = _readString(prepare.payload, 'method', 'PUT') ?? 'PUT';
+      if (url == null) {
+        upload = upload.copyWith(
+          isUploading: false,
+          transferNote: 'Upload prepare response did not include a URL',
+        );
+        lastProtocolMessage = upload.transferNote;
+        notifyListeners();
+        return;
+      }
+
+      upload = upload.copyWith(
+        progress: 0.08,
+        transferNote: 'Uploading over Wi-Fi',
+      );
+      notifyListeners();
+
+      await _wifiUploadClient.uploadBytes(
+        uri: Uri.parse(url),
+        method: method,
+        bytes: uploadBytes,
+        mimeType: 'audio/mpeg',
+        onProgress: (progress) {
+          upload = upload.copyWith(
+            progress: 0.08 + (progress * 0.9),
+            transferNote:
+                'Sending over local Wi-Fi ${(progress * 100).round()}%',
+          );
+          notifyListeners();
+        },
+      );
+
+      upload = upload.copyWith(
+        progress: 1,
+        isUploading: false,
+        transferNote: 'Upload complete and stored on speaker',
+      );
+      lastProtocolMessage = 'MP3 uploaded to speaker';
+    } catch (error) {
+      upload = upload.copyWith(
+        isUploading: false,
+        transferNote: 'Upload failed: $error',
+      );
+      lastProtocolMessage = upload.transferNote;
+    }
+    notifyListeners();
+  }
+
+  Future<void> pickUploadFile() async {
+    if (upload.isUploading) {
+      return;
+    }
+
+    final file = await _uploadFilePicker.pickMp3();
+    if (file == null) {
+      lastProtocolMessage = 'MP3 selection cancelled';
+      notifyListeners();
+      return;
+    }
+
+    if (file.bytes.isEmpty) {
+      upload = upload.copyWith(transferNote: 'Selected MP3 could not be read');
+      lastProtocolMessage = upload.transferNote;
+      notifyListeners();
+      return;
+    }
+
+    _selectedUploadBytes = file.bytes;
+    upload = upload.copyWith(
+      fileName: file.name,
+      sizeBytes: file.sizeBytes,
+      progress: 0,
+      isUploading: false,
+      transferNote:
+          'Ready to upload ${(file.sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB',
+    );
+    lastProtocolMessage = 'MP3 selected';
+    notifyListeners();
+  }
+
+  void _startMockUpload() {
+    upload = upload.copyWith(
+      progress: 0.02,
+      isUploading: true,
+      transferNote: 'Preparing mock upload session',
     );
     notifyListeners();
 
@@ -436,44 +555,13 @@ class MockDeviceController extends ChangeNotifier {
   }
 
   void _applyStatusPayload(Map<String, Object?> payload) {
-    device = device.copyWith(
-      batteryPercent: _readInt(
-        payload,
-        'batteryPercent',
-        device.batteryPercent,
-      ),
-      storageUsedPercent: _readInt(
-        payload,
-        'storageUsedPercent',
-        device.storageUsedPercent,
-      ),
-      wifiName: _readString(payload, 'wifiName', device.wifiName),
-      signalStrength: _readInt(payload, 'rssi', device.signalStrength),
-      firmwareVersion: _readString(
-        payload,
-        'firmwareVersion',
-        device.firmwareVersion,
-      ),
-      status: DeviceLinkStatus.connected,
+    final update = _statusPayloadMapper.apply(
+      payload: payload,
+      currentDevice: device,
+      currentPlayback: playback,
     );
-
-    final currentTitle = _readString(payload, 'currentTitle', playback.title);
-    final currentRange = _readString(payload, 'currentRange', null);
-    final repeatCount = _readInt(payload, 'repeatCount', playback.repeatCount);
-    final isPlaying = _readBool(payload, 'isPlaying', playback.isPlaying);
-    final volume = _readDouble(payload, 'volume', playback.volume);
-    final progress = _readDouble(payload, 'progress', playback.progress);
-
-    playback = playback.copyWith(
-      title: currentTitle,
-      subtitle: currentRange == null
-          ? playback.subtitle
-          : '$currentRange - Repeat ${repeatCount}x',
-      isPlaying: isPlaying,
-      volume: volume.clamp(0, 1).toDouble(),
-      progress: progress.clamp(0, 1).toDouble(),
-      repeatCount: repeatCount,
-    );
+    device = update.device;
+    playback = update.playback;
   }
 
   String? _readString(
@@ -484,29 +572,6 @@ class MockDeviceController extends ChangeNotifier {
     final value = payload[key];
     if (value is String && value.isNotEmpty) {
       return value;
-    }
-    return fallback;
-  }
-
-  int _readInt(Map<String, Object?> payload, String key, int fallback) {
-    final value = payload[key];
-    if (value is int) {
-      return value;
-    }
-    if (value is num) {
-      return value.round();
-    }
-    return fallback;
-  }
-
-  double _readDouble(
-    Map<String, Object?> payload,
-    String key,
-    double fallback,
-  ) {
-    final value = payload[key];
-    if (value is num) {
-      return value.toDouble();
     }
     return fallback;
   }

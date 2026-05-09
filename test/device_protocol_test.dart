@@ -93,6 +93,18 @@ void main() {
     await protocol.setVolume(0.4);
     await protocol.next();
     await protocol.previous();
+    await protocol.upsertMotionRule(
+      id: 'entry',
+      enabled: true,
+      trigger: 'motion.detected',
+      action: const <String, Object?>{'type': 'playRange', 'surah': 1},
+    );
+    await protocol.provisionWifi(ssid: 'Home Wi-Fi', password: 'secret');
+    await protocol.prepareUpload(
+      fileName: 'test_recitation.mp3',
+      sizeBytes: 8192,
+      mimeType: 'audio/mpeg',
+    );
 
     expect(transport.commands[0].id, 'app-000001');
     expect(transport.commands[0].type, DeviceCommandType.statusGet);
@@ -102,6 +114,15 @@ void main() {
     expect(transport.commands[2].type, DeviceCommandType.playbackNext);
     expect(transport.commands[3].id, 'app-000004');
     expect(transport.commands[3].type, DeviceCommandType.playbackPrevious);
+    expect(transport.commands[4].id, 'app-000005');
+    expect(transport.commands[4].type, DeviceCommandType.motionRuleUpsert);
+    expect(transport.commands[4].payload['trigger'], 'motion.detected');
+    expect(transport.commands[5].id, 'app-000006');
+    expect(transport.commands[5].type, DeviceCommandType.wifiProvision);
+    expect(transport.commands[5].payload['ssid'], 'Home Wi-Fi');
+    expect(transport.commands[6].id, 'app-000007');
+    expect(transport.commands[6].type, DeviceCommandType.uploadPrepare);
+    expect(transport.commands[6].payload['mimeType'], 'audio/mpeg');
   });
 }
 

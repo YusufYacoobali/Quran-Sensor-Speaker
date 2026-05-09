@@ -5,14 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../services/mock_device_controller.dart';
+import '../services/device_controller.dart';
 import '../theme/app_theme.dart';
 import 'ble_device_page.dart';
 
 class BleScanPage extends StatefulWidget {
   const BleScanPage({this.controller, super.key});
 
-  final MockDeviceController? controller;
+  final DeviceController? controller;
 
   @override
   State<BleScanPage> createState() => _BleScanPageState();
@@ -206,7 +206,7 @@ class _BleScanPageState extends State<BleScanPage> {
               ),
             ),
             subtitle: Text(
-              '${result.device.remoteId} • RSSI ${result.rssi} dBm',
+              '${result.device.remoteId} - RSSI ${result.rssi} dBm',
             ),
             trailing: FilledButton(
               onPressed: () => Navigator.of(context).push(

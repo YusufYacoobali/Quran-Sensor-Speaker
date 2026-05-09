@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../services/device_protocol.dart';
-import '../services/mock_device_controller.dart';
+import '../services/device_controller.dart';
 import '../services/quran_ble_connection.dart';
 import '../theme/app_theme.dart';
 
@@ -12,7 +12,7 @@ class BleDevicePage extends StatefulWidget {
   const BleDevicePage({required this.scanResult, this.controller, super.key});
 
   final ScanResult scanResult;
-  final MockDeviceController? controller;
+  final DeviceController? controller;
 
   @override
   State<BleDevicePage> createState() => _BleDevicePageState();

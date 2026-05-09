@@ -15,6 +15,8 @@ class QuranBleConnection implements DeviceTransport {
   final BluetoothCharacteristic rx;
   final BluetoothCharacteristic tx;
 
+  // BLE responses can arrive out of order, so each command is tracked by the
+  // envelope id until the matching response notification is received.
   final Map<String, Completer<DeviceResponse>> _pending =
       <String, Completer<DeviceResponse>>{};
   final StreamController<DeviceEvent> _events =
@@ -81,14 +83,21 @@ class QuranBleConnection implements DeviceTransport {
   Future<DeviceResponse> send(DeviceCommand command) async {
     await start();
 
+    if (!rx.properties.write && !rx.properties.writeWithoutResponse) {
+      throw const DeviceProtocolException(
+        'Command characteristic is not writable',
+      );
+    }
+
     final completer = Completer<DeviceResponse>();
     _pending[command.id] = completer;
+    final useWriteWithoutResponse =
+        !rx.properties.write && rx.properties.writeWithoutResponse;
 
     try {
       await rx.write(
         command.encode(),
-        withoutResponse:
-            !rx.properties.write && rx.properties.writeWithoutResponse,
+        withoutResponse: useWriteWithoutResponse,
       );
       return await completer.future.timeout(const Duration(seconds: 5));
     } on TimeoutException {

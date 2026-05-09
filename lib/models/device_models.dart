@@ -145,24 +145,28 @@ class MotionRule {
 class UploadJob {
   const UploadJob({
     required this.fileName,
+    required this.sizeBytes,
     required this.progress,
     required this.isUploading,
     required this.transferNote,
   });
 
   final String fileName;
+  final int sizeBytes;
   final double progress;
   final bool isUploading;
   final String transferNote;
 
   UploadJob copyWith({
     String? fileName,
+    int? sizeBytes,
     double? progress,
     bool? isUploading,
     String? transferNote,
   }) {
     return UploadJob(
       fileName: fileName ?? this.fileName,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
       progress: progress ?? this.progress,
       isUploading: isUploading ?? this.isUploading,
       transferNote: transferNote ?? this.transferNote,
